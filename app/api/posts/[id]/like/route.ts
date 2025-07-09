@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     if (post) {
       // User already liked the post, remove the like
-      await db.collection("posts").updateOne({ _id: new ObjectId(postId) }, { $pull: { likes: user._id } })
+      await db.collection("posts").updateOne({ _id: new ObjectId(postId) }, { $pull: { likes: user._id as any } })
       return NextResponse.json({ liked: false })
     } else {
       // User hasn't liked the post, add the like

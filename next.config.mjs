@@ -21,6 +21,12 @@ const nextConfig = {
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
   },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals.push('mongoose');
+    }
+    return config;
+  },
 }
 
 mergeConfig(nextConfig, userConfig)

@@ -3,14 +3,14 @@
 import type React from "react"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/components/auth-provider"
+import { useSession } from "next-auth/react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
-import { MessageSquare, ThumbsUp, Share2, Code, Search, Bell } from "lucide-react"
+import { MessageSquare, ThumbsUp, Share2, Code, Search, Bell, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { MainNav } from "@/components/main-nav"
 import { UserNav } from "@/components/user-nav"
@@ -34,24 +34,52 @@ export default function FeedPage() {
   const [posts, setPosts] = useState<Post[]>([])
   const [newPost, setNewPost] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const { user } = useAuth()
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [retryDisabled, setRetryDisabled] = useState(false)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const { data: session, status } = useSession()
   const { toast } = useToast()
+  const [likingPostId, setLikingPostId] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        const res = await fetch("/api/posts")
-        if (res.ok) {
-          const data = await res.json()
+  const POSTS_PER_PAGE = 10
+
+  const fetchPosts = async (pageNum = 1, append = false) => {
+    try {
+      if (pageNum === 1) setLoading(true)
+      setFetchError(null)
+      const res = await fetch(`/api/posts?page=${pageNum}&limit=${POSTS_PER_PAGE}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (append) {
+          setPosts(prev => [...prev, ...data])
+        } else {
           setPosts(data)
         }
-      } catch (error) {
-        console.error("Error fetching posts:", error)
+        setHasMore(data.length === POSTS_PER_PAGE)
+      } else {
+        setFetchError("Failed to fetch posts. Please try again.")
+        setHasMore(false)
+        console.error("Failed to fetch posts:", res.status)
       }
+    } catch (error) {
+      setFetchError("Failed to load posts. Please try again.")
+      setHasMore(false)
+      console.error("Error fetching posts:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load posts. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
     }
+  }
 
-    fetchPosts()
-  }, [])
+  useEffect(() => {
+    fetchPosts(1)
+  }, [toast])
 
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -75,11 +103,14 @@ export default function FeedPage() {
           title: "Post created",
           description: "Your post has been published to your network",
         })
+      } else {
+        const error = await res.json()
+        throw new Error(error.error || "Failed to create post")
       }
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to create post. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to create post. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -88,19 +119,34 @@ export default function FeedPage() {
   }
 
   const handleLike = async (postId: string) => {
+    if (!session) {
+      toast({
+        title: "Authentication required",
+        description: "Please sign in to like posts",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Store the current post to revert on error
+    const currentPost = posts.find(post => post.id === postId)
+    if (!currentPost) return
+
+    const newLiked = !currentPost.liked
+
     const updatedPosts = posts.map((post) => {
       if (post.id === postId) {
-        const liked = !post.liked
         return {
           ...post,
-          liked,
-          likes: post.likes + (liked ? 1 : -1),
+          liked: newLiked,
+          likes: post.likes + (newLiked ? 1 : -1),
         }
       }
       return post
     })
 
     setPosts(updatedPosts)
+    setLikingPostId(postId)
 
     try {
       await fetch(`/api/posts/${postId}/like`, {
@@ -108,56 +154,103 @@ export default function FeedPage() {
       })
     } catch (error) {
       console.error("Error liking post:", error)
-      // Revert on error
-      setPosts(posts)
+      // Revert on error using the stored current post
+      setPosts(posts.map(post => 
+        post.id === postId 
+          ? { ...currentPost }
+          : post
+      ))
+      toast({
+        title: "Error",
+        description: "Failed to like post. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setLikingPostId(null)
     }
   }
 
-  // Mock data for demonstration
-  const mockPosts: Post[] = [
-    {
-      id: "1",
-      content:
-        "Just launched a new open-source library for handling complex state management in React. Check it out on GitHub! #React #OpenSource",
-      author: {
-        id: "user1",
-        name: "Sarah Chen",
-        title: "Senior Frontend Developer at TechCorp",
-        image: "/placeholder.svg?height=40&width=40",
-      },
-      likes: 24,
-      comments: 8,
-      createdAt: "2 hours ago",
-    },
-    {
-      id: "2",
-      content:
-        "Looking for feedback on my new API design. Anyone interested in doing a code review? #Backend #API #CodeReview",
-      author: {
-        id: "user2",
-        name: "Alex Rodriguez",
-        title: "Backend Developer at DataSystems",
-        image: "/placeholder.svg?height=40&width=40",
-      },
-      likes: 8,
-      comments: 3,
-      createdAt: "5 hours ago",
-    },
-    {
-      id: "3",
-      content:
-        "Just completed the Advanced TypeScript certification! The generics section was challenging but worth it. #TypeScript #Learning",
-      author: {
-        id: "user3",
-        name: "Jamie Wilson",
-        title: "Full Stack Developer",
-        image: "/placeholder.svg?height=40&width=40",
-      },
-      likes: 42,
-      comments: 5,
-      createdAt: "1 day ago",
-    },
-  ]
+  const handleRetry = () => {
+    setRetryDisabled(true)
+    fetchPosts(page)
+    setTimeout(() => setRetryDisabled(false), 2000)
+  }
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1
+    setPage(nextPage)
+    fetchPosts(nextPage, true)
+  }
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
+    
+    if (diffInHours < 1) return "Just now"
+    if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`
+    
+    const diffInDays = Math.floor(diffInHours / 24)
+    return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`
+  }
+
+  // Show loading state while session is being determined
+  if (status === "loading") {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <header className="sticky top-0 z-50 w-full border-b bg-background">
+          <div className="container flex h-16 items-center justify-between">
+            <div className="flex items-center gap-2 md:gap-10">
+              <Link href="/" className="flex items-center gap-2">
+                <Code className="h-6 w-6 text-primary" />
+                <span className="text-xl font-bold hidden md:inline-block">DevConnect</span>
+              </Link>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+        </header>
+        <div className="container flex-1 items-center justify-center py-6">
+          <div className="text-center">
+            <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <header className="sticky top-0 z-50 w-full border-b bg-background">
+          <div className="container flex h-16 items-center justify-between">
+            <div className="flex items-center gap-2 md:gap-10">
+              <Link href="/" className="flex items-center gap-2">
+                <Code className="h-6 w-6 text-primary" />
+                <span className="text-xl font-bold hidden md:inline-block">DevConnect</span>
+              </Link>
+            </div>
+            <div className="flex items-center gap-4">
+              <Link href="/auth/login">
+                <Button>Sign In</Button>
+              </Link>
+            </div>
+          </div>
+        </header>
+        <div className="container flex-1 items-center justify-center py-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">Welcome to DevConnect</h1>
+            <p className="text-muted-foreground mb-6">Sign in to see the latest posts from the developer community</p>
+            <Link href="/auth/login">
+              <Button>Sign In to Continue</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -194,8 +287,8 @@ export default function FeedPage() {
             <Card>
               <CardHeader className="flex flex-row items-center gap-4 p-4">
                 <Avatar>
-                  <AvatarImage src={user?.image || "/placeholder.svg?height=40&width=40"} alt={user?.name || "User"} />
-                  <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
+                  <AvatarImage src={(session.user as any)?.image || "/placeholder.svg?height=40&width=40"} alt={session.user?.name || "User"} />
+                  <AvatarFallback>{session.user?.name?.charAt(0) || "U"}</AvatarFallback>
                 </Avatar>
                 <div className="font-semibold">What's on your mind?</div>
               </CardHeader>
@@ -216,40 +309,72 @@ export default function FeedPage() {
               </CardContent>
             </Card>
 
-            {(posts.length > 0 ? posts : mockPosts).map((post) => (
-              <Card key={post.id}>
-                <CardHeader className="flex flex-row items-start gap-4 p-4">
-                  <Avatar>
-                    <AvatarImage
-                      src={post.author.image || "/placeholder.svg?height=40&width=40"}
-                      alt={post.author.name}
-                    />
-                    <AvatarFallback>{post.author.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="font-semibold">{post.author.name}</div>
-                    <div className="text-sm text-muted-foreground">{post.author.title}</div>
-                    <div className="text-xs text-muted-foreground">{post.createdAt}</div>
+            {loading ? (
+                fetchError ? (
+                  <div className="space-y-4 text-center">
+                    <p className="text-red-500 mb-4">{fetchError}</p>
+                    <Button onClick={handleRetry} disabled={retryDisabled}>Retry</Button>
                   </div>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <p>{post.content}</p>
+                ) : (
+                  <div className="flex justify-center items-center min-h-[200px]">
+                    <Loader2 className="animate-spin h-8 w-8 text-muted-foreground" />
+                  </div>
+                )
+            ) : posts.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <p className="text-muted-foreground mb-4">No posts yet. Be the first to share something!</p>
+                  <p className="text-sm text-muted-foreground">Create a post above to get started.</p>
                 </CardContent>
-                <CardFooter className="border-t p-2 flex justify-between">
-                  <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleLike(post.id)}>
-                    <ThumbsUp className={`h-4 w-4 ${post.liked ? "fill-primary text-primary" : ""}`} />
-                    <span>{post.likes}</span>
-                  </Button>
-                  <Button variant="ghost" size="sm" className="gap-1">
-                    <MessageSquare className="h-4 w-4" />
-                    <span>{post.comments}</span>
-                  </Button>
-                  <Button variant="ghost" size="sm">
-                    <Share2 className="h-4 w-4" />
-                  </Button>
-                </CardFooter>
               </Card>
-            ))}
+            ) : (
+              <>
+                {posts.map((post) => (
+                  <Card key={post.id}>
+                    <CardHeader className="flex flex-row items-start gap-4 p-4">
+                      <Avatar>
+                        <AvatarImage
+                          src={post.author.image || "/placeholder.svg?height=40&width=40"}
+                          alt={post.author.name}
+                        />
+                        <AvatarFallback>{post.author.name.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div className="font-semibold">{post.author.name}</div>
+                        <div className="text-sm text-muted-foreground">{post.author.title || "Developer"}</div>
+                        <div className="text-xs text-muted-foreground">{formatTimeAgo(post.createdAt)}</div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-0">
+                      <p>{post.content}</p>
+                    </CardContent>
+                    <CardFooter className="border-t p-2 flex justify-between">
+                      <Button variant="ghost" size="sm" className="gap-1" onClick={() => handleLike(post.id)}
+                        disabled={likingPostId === post.id}>
+                        {likingPostId === post.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ThumbsUp className={`h-4 w-4 ${post.liked ? "fill-primary text-primary" : ""}`} />
+                        )}
+                        <span>{post.likes}</span>
+                      </Button>
+                      <Button variant="ghost" size="sm" className="gap-1">
+                        <MessageSquare className="h-4 w-4" />
+                        <span>{post.comments}</span>
+                      </Button>
+                      <Button variant="ghost" size="sm">
+                        <Share2 className="h-4 w-4" />
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                ))}
+                {hasMore && (
+                  <div className="flex justify-center mt-4">
+                    <Button onClick={handleLoadMore} disabled={loading}>Load More</Button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </main>
         <aside className="fixed top-20 z-30 hidden w-[300px] shrink-0 lg:sticky lg:block">

@@ -1,115 +1,109 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
+import { signIn } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { useAuth } from "@/components/auth-provider"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useToast } from "@/components/ui/use-toast"
-import { Code, Github, Mail } from "lucide-react"
+import { toast } from "sonner"
+import { useSearchParams } from "next/navigation"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+  const router = useRouter()
+  const searchParams = useSearchParams();
+  const error = searchParams.get("error");
+  const errorMessages: Record<string, string> = {
+    CredentialsSignin: "Invalid email or password.",
+    "Invalid credentials": "Invalid email or password.",
+    default: "Something went wrong. Please try again.",
+  };
+  const errorMessage = error ? (errorMessages[error] || errorMessages.default) : null;
   const [isLoading, setIsLoading] = useState(false)
-  const { login, githubLogin, googleLogin } = useAuth()
-  const { toast } = useToast()
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
     try {
-      await login(email, password)
-      toast({
-        title: "Login successful",
-        description: "Welcome back to DevConnect!",
+      const result = await signIn("credentials", {
+        email: formData.email,
+        password: formData.password,
+        redirect: true,
+        callbackUrl: "/feed"
       })
     } catch (error) {
-      toast({
-        title: "Login failed",
-        description: error instanceof Error ? error.message : "Please check your credentials and try again",
-        variant: "destructive",
-      })
+      console.error("Login error:", error)
+      toast.error("Something went wrong. Please try again.")
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/50 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1 text-center">
-          <div className="flex justify-center mb-2">
-            <Code className="h-10 w-10 text-primary" />
+    <div className="container flex h-screen w-screen flex-col items-center justify-center">
+      <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+        <div className="flex flex-col space-y-2 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Welcome back
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Enter your email to sign in to your account
+          </p>
+        </div>
+        {errorMessage && (
+          <div className="mb-4 text-red-500 text-center">
+            {errorMessage}
           </div>
-          <CardTitle className="text-2xl">Welcome back</CardTitle>
-          <CardDescription>Sign in to your DevConnect account</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Button variant="outline" className="w-full" onClick={() => githubLogin()}>
-              <Github className="mr-2 h-4 w-4" />
-              GitHub
-            </Button>
-            <Button variant="outline" className="w-full" onClick={() => googleLogin()}>
-              <Mail className="mr-2 h-4 w-4" />
-              Google
-            </Button>
-          </div>
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-            </div>
-          </div>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+        )}
+        <form onSubmit={handleSubmit}>
+          <div className="grid gap-4">
+            <div className="grid gap-1">
               <Input
                 id="email"
+                placeholder="name@example.com"
                 type="email"
-                placeholder="john@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
+                autoCapitalize="none"
+                autoComplete="email"
+                autoCorrect="off"
+                disabled={isLoading}
+                value={formData.email}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+            <div className="grid gap-1">
               <Input
                 id="password"
+                placeholder="Password"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
+                autoComplete="current-password"
+                disabled={isLoading}
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
               />
-              <div className="text-right text-sm">
-                <Link href="/auth/forgot-password" className="text-primary hover:underline">
-                  Forgot password?
-                </Link>
-              </div>
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Signing in..." : "Sign in"}
+            <Button disabled={isLoading}>
+              {isLoading ? "Signing in..." : "Sign In"}
             </Button>
-          </form>
-        </CardContent>
-        <CardFooter className="flex justify-center">
-          <p className="text-sm text-muted-foreground">
-            Don't have an account?{" "}
-            <Link href="/auth/register" className="text-primary hover:underline">
-              Sign up
-            </Link>
-          </p>
-        </CardFooter>
-      </Card>
+          </div>
+        </form>
+        <p className="px-8 text-center text-sm text-muted-foreground">
+          <Link
+            href="/auth/register"
+            className="hover:text-brand underline underline-offset-4"
+          >
+            Don&apos;t have an account? Sign Up
+          </Link>
+        </p>
+      </div>
     </div>
   )
 }
