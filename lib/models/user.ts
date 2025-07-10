@@ -3,10 +3,12 @@ import mongoose, { Document, Model, Schema } from 'mongoose';
 export interface IUser extends Document {
   name: string;
   email: string;
-  password: string;
+  password?: string; // Optional for Google OAuth users
+  image?: string; // For profile picture from Google
+  title?: string; // For user's job title/role
   createdAt: Date;
   updatedAt: Date;
-  comparePassword(candidatePassword: string): Promise<boolean>;
+  comparePassword?(candidatePassword: string): Promise<boolean>;
 }
 
 interface IUserModel extends Model<IUser> {
@@ -33,9 +35,22 @@ const userSchema = new Schema<IUser>({
   },
   password: {
     type: String,
-    required: [true, 'Please provide a password'],
+    required: function(this: IUser) {
+      // Password is only required for credential-based users
+      // Google OAuth users don't need a password
+      return !this.image; // If no image (Google profile), password is not required
+    },
     minLength: [6, 'Password must be at least 6 characters'],
     select: false,
+  },
+  image: {
+    type: String,
+    trim: true,
+  },
+  title: {
+    type: String,
+    default: "Developer",
+    trim: true,
   },
   createdAt: {
     type: Date,
@@ -53,8 +68,11 @@ userSchema.pre('save', function(this: IUser, next: mongoose.CallbackWithoutResul
   next();
 });
 
-// Add method to compare passwords
+// Add method to compare passwords (only for credential users)
 userSchema.methods.comparePassword = async function(candidatePassword: string): Promise<boolean> {
+  if (!this.password) {
+    return false; // Google OAuth users don't have passwords
+  }
   const bcrypt = await import('bcryptjs');
   return bcrypt.compare(candidatePassword, this.password);
 };

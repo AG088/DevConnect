@@ -99,7 +99,7 @@ export async function POST(req: Request) {
       description,
       language,
       isGithub,
-      repoUrl,
+      repoUrl, 
       technologies,
       visibility,
       owner: session.user.id

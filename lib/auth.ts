@@ -1,11 +1,19 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import connectDB from "@/lib/mongoose";
 import User from "@/lib/models/user";
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    // Google OAuth Provider
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    
+    // Credentials Provider (Email + Password)
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -38,6 +46,7 @@ export const authOptions: NextAuthOptions = {
           id: user._id.toString(),
           name: user.name,
           email: user.email,
+          image: user.image,
         };
       }
     })
@@ -47,18 +56,40 @@ export const authOptions: NextAuthOptions = {
     error: '/auth/login',
   },
   callbacks: {
+    // Save Google users to MongoDB
+    async signIn({ user, account }) {
+      if (account?.provider === "google") {
+        await connectDB();
+        
+        const existingUser = await User.findOne({ email: user.email });
+        
+        if (!existingUser) {
+          // Create new user for Google OAuth
+          await User.create({
+            name: user.name,
+            email: user.email,
+            image: user.image,
+            title: "Developer", // Default title
+          });
+        }
+      }
+      return true;
+    },
+    
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
+        token.id = user.id || user.sub; // Google gives 'sub' as ID
       }
       return token;
     },
+    
     async session({ session, token }) {
       if (session?.user) {
         session.user.id = token.id as string;
       }
       return session;
     },
+    
     async redirect({ url, baseUrl }) {
       // Allow manual redirects to work properly
       return url;
