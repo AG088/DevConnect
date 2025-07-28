@@ -10,6 +10,23 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user) {
+      return NextResponse.json(
+        { message: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    // Validate that user.id is a valid MongoDB ObjectId
+    if (!session.user.id || !/^[0-9a-fA-F]{24}$/.test(session.user.id)) {
+      return NextResponse.json(
+        { message: "Invalid user session" },
+        { status: 401 }
+      )
+    }
+
     await connectDB()
 
     const project = await Project.findById(params.id)
@@ -19,6 +36,14 @@ export async function GET(
       return NextResponse.json(
         { message: "Project not found" },
         { status: 404 }
+      )
+    }
+
+    // Check if user is the owner of the project
+    if (project.owner._id.toString() !== session.user.id) {
+      return NextResponse.json(
+        { message: "Unauthorized to view this project" },
+        { status: 403 }
       )
     }
 
@@ -43,6 +68,14 @@ export async function PUT(
     if (!session?.user) {
       return NextResponse.json(
         { message: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    // Validate that user.id is a valid MongoDB ObjectId
+    if (!session.user.id || !/^[0-9a-fA-F]{24}$/.test(session.user.id)) {
+      return NextResponse.json(
+        { message: "Invalid user session" },
         { status: 401 }
       )
     }
@@ -116,6 +149,14 @@ export async function DELETE(
     if (!session?.user) {
       return NextResponse.json(
         { message: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    // Validate that user.id is a valid MongoDB ObjectId
+    if (!session.user.id || !/^[0-9a-fA-F]{24}$/.test(session.user.id)) {
+      return NextResponse.json(
+        { message: "Invalid user session" },
         { status: 401 }
       )
     }

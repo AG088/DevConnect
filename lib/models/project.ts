@@ -6,6 +6,11 @@ export interface IProject extends Document {
   language: string;
   isGithub: boolean;
   repoUrl?: string;
+  // GitHub-specific fields
+  githubRepoId?: number;
+  githubStars?: number;
+  githubForks?: number;
+  githubLastSynced?: Date;
   technologies: string[];
   visibility: 'public' | 'private';
   owner: mongoose.Types.ObjectId;
@@ -52,6 +57,21 @@ const projectSchema = new Schema<IProject>({
       },
       message: 'Please provide a valid GitHub repository URL'
     }
+  },
+  // GitHub-specific fields
+  githubRepoId: {
+    type: Number,
+  },
+  githubStars: {
+    type: Number,
+    default: 0,
+  },
+  githubForks: {
+    type: Number,
+    default: 0,
+  },
+  githubLastSynced: {
+    type: Date,
   },
   technologies: [{
     type: String,

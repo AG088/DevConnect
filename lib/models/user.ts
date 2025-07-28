@@ -1,4 +1,5 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
+import mongooseEncryption from 'mongoose-encryption';
 
 export interface IUser extends Document {
   name: string;
@@ -8,6 +9,11 @@ export interface IUser extends Document {
   title?: string; // For user's job title/role
   createdAt: Date;
   updatedAt: Date;
+  // GitHub OAuth fields
+  githubId?: string;
+  githubUsername?: string;
+  githubAvatarUrl?: string;
+  githubAccessToken?: string; // Encrypted, never exposed to client
   comparePassword?(candidatePassword: string): Promise<boolean>;
 }
 
@@ -60,6 +66,20 @@ const userSchema = new Schema<IUser>({
     type: Date,
     default: Date.now,
   },
+  githubId: {
+    type: String,
+    index: true,
+  },
+  githubUsername: {
+    type: String,
+  },
+  githubAvatarUrl: {
+    type: String,
+  },
+  githubAccessToken: {
+    type: String,
+    select: false, // Never return by default
+  },
 });
 
 // Update the updatedAt field before saving
@@ -76,6 +96,16 @@ userSchema.methods.comparePassword = async function(candidatePassword: string): 
   const bcrypt = await import('bcryptjs');
   return bcrypt.compare(candidatePassword, this.password);
 };
+
+// Encryption for githubAccessToken - temporarily disabled to fix OAuth
+// if (process.env.GITHUB_ENCRYPTION_SECRET) {
+//   userSchema.plugin(mongooseEncryption, {
+//     secret: process.env.GITHUB_ENCRYPTION_SECRET,
+//     encryptedFields: ['githubAccessToken'],
+//     excludeFromEncryption: ['email', 'name', 'image', 'title', 'createdAt', 'updatedAt', 'githubId', 'githubUsername', 'githubAvatarUrl'],
+//     requireAuthenticationCode: false,
+//   });
+// }
 
 // Create and export the model
 const User = mongoose.models.User || mongoose.model<IUser, IUserModel>('User', userSchema);

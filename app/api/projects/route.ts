@@ -7,6 +7,23 @@ import Project from "@/lib/models/project"
 // GET /api/projects
 export async function GET(req: Request) {
   try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user) {
+      return NextResponse.json(
+        { message: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    // Validate that user.id is a valid MongoDB ObjectId
+    if (!session.user.id || !/^[0-9a-fA-F]{24}$/.test(session.user.id)) {
+      return NextResponse.json(
+        { message: "Invalid user session" },
+        { status: 401 }
+      )
+    }
+
     const { searchParams } = new URL(req.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '10')
@@ -16,8 +33,10 @@ export async function GET(req: Request) {
 
     await connectDB()
 
-    // Build query
-    const query: any = {}
+    // Build query - ALWAYS filter by current user for privacy
+    const query: any = {
+      owner: session.user.id // Only show current user's projects
+    }
     
     if (search) {
       query.$or = [
@@ -82,7 +101,8 @@ export async function POST(req: Request) {
         { message: "Missing required fields" },
         { status: 400 }
       )
-    }
+    }  
+    
 
     // Validate GitHub URL if it's a GitHub project
     if (isGithub && !repoUrl) {

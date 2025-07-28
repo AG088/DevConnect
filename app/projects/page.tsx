@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Code, ExternalLink, Github, Plus, Star } from "lucide-react"
-import { useSession } from "next-auth/react"
+import { Code, ExternalLink, Github, Plus, Star, GitFork } from "lucide-react"
+import { useSession, signOut } from "next-auth/react"
 
 type Project = {
   id: string
@@ -18,6 +18,9 @@ type Project = {
   visibility: string
   isGithub?: boolean
   repoUrl?: string
+  githubStars?: number
+  githubForks?: number
+  githubLastSynced?: string
   createdAt: string
   owner: {
     id: string
@@ -30,6 +33,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [debugInfo, setDebugInfo] = useState<any>(null)
   const { data: session } = useSession()
 
   useEffect(() => {
@@ -40,6 +44,12 @@ export default function ProjectsPage() {
     try {
       setLoading(true)
       const response = await fetch("/api/projects")
+      
+      if (response.status === 401) {
+        // Handle authentication error - user might need to re-login
+        setError("Please sign in again to view your projects")
+        return
+      }
       
       if (!response.ok) {
         throw new Error("Failed to fetch projects")
@@ -54,6 +64,33 @@ export default function ProjectsPage() {
       console.error("Error fetching projects:", err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const debugProjects = async () => {
+    try {
+      const response = await fetch("/api/debug-projects")
+      if (response.ok) {
+        const data = await response.json()
+        setDebugInfo(data)
+        console.log("Debug info:", data)
+      }
+    } catch (err) {
+      console.error("Debug error:", err)
+    }
+  }
+
+  const fixUserProjects = async () => {
+    try {
+      const response = await fetch("/api/fix-user-projects", { method: 'POST' })
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Fix result:", data)
+        // Refresh projects after fix
+        fetchProjects()
+      }
+    } catch (err) {
+      console.error("Fix error:", err)
     }
   }
 
@@ -118,7 +155,15 @@ export default function ProjectsPage() {
       <div className="container py-10">
         <div className="text-center">
           <p className="text-red-500 mb-4">{error}</p>
-          <Button onClick={fetchProjects}>Try Again</Button>
+          {error.includes("sign in again") ? (
+            <div className="space-x-4">
+              <Button onClick={() => signOut({ callbackUrl: '/auth/login' })}>
+                Sign Out & Sign In Again
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={fetchProjects}>Try Again</Button>
+          )}
         </div>
       </div>
     )
@@ -131,12 +176,26 @@ export default function ProjectsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
           <p className="text-muted-foreground">Showcase your work and connect with GitHub repositories</p>
         </div>
-        <Link href="/projects/new">
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            Add Project
+        <div className="flex gap-2">
+          <Button onClick={debugProjects} variant="outline" size="sm">
+            Debug
           </Button>
-        </Link>
+          <Button onClick={fixUserProjects} variant="outline" size="sm">
+            Fix Projects
+          </Button>
+          <Link href="/github/import">
+            <Button variant="outline" className="gap-2">
+              <Github className="h-4 w-4" />
+              Import from GitHub
+            </Button>
+          </Link>
+          <Link href="/projects/new">
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              Add Project
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="mb-8">
@@ -147,6 +206,28 @@ export default function ProjectsPage() {
           className="max-w-md"
         />
       </div>
+
+      {debugInfo && (
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+          <h3 className="font-semibold mb-2">Debug Information:</h3>
+          <div className="text-sm space-y-1">
+            <p><strong>Current User:</strong> {debugInfo.currentUser?.name} ({debugInfo.currentUser?.email})</p>
+            <p><strong>Session User ID:</strong> {debugInfo.currentUser?.sessionUserId}</p>
+            <p><strong>Total Projects in DB:</strong> {debugInfo.totalProjectsInDB}</p>
+            <p><strong>Your Projects:</strong> {debugInfo.userProjectsCount}</p>
+            {debugInfo.userProjects?.length > 0 && (
+              <div>
+                <p><strong>Your Project Names:</strong></p>
+                <ul className="list-disc list-inside ml-4">
+                  {debugInfo.userProjects.map((p: any) => (
+                    <li key={p.id}>{p.name} (created: {new Date(p.createdAt).toLocaleDateString()})</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <Tabs defaultValue="all" className="space-y-6">
         <TabsList>
@@ -247,6 +328,18 @@ function ProjectCard({ project, formatTimeAgo }: { project: Project; formatTimeA
             <div className="text-xs text-muted-foreground">
               {project.visibility}
             </div>
+            {project.isGithub && project.githubStars !== undefined && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Star className="h-3 w-3" />
+                <span>{project.githubStars}</span>
+              </div>
+            )}
+            {project.isGithub && project.githubForks !== undefined && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <GitFork className="h-3 w-3" />
+                <span>{project.githubForks}</span>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-1">
             {project.technologies.slice(0, 3).map((tech, index) => (
