@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Code, Home, Users, Briefcase, MessageSquare, Bell, Settings, HelpCircle } from "lucide-react"
+import { NotificationBadge } from "@/components/notification-badge"
 
 export function MainNav() {
   const pathname = usePathname()
@@ -26,10 +27,11 @@ export function MainNav() {
           <Button
             variant={pathname === "/network" ? "secondary" : "ghost"}
             size="lg"
-            className="w-full justify-start gap-2"
+            className="w-full justify-start gap-2 relative"
           >
             <Users className="h-5 w-5" />
             My Network
+            <NotificationBadge />
           </Button>
         </Link>
         <Link href="/projects">
